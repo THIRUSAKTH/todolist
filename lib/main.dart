@@ -1,140 +1,255 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
-void main() {
-  runApp(MyApp());
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp();
+  runApp(const MyApp());
 }
+
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(debugShowCheckedModeBanner: false, home: TODOList());
+    return const MaterialApp(
+      debugShowCheckedModeBanner: false,
+      home: MainPage(),
+    );
   }
 }
 
-class TODOList extends StatefulWidget {
-  const TODOList({super.key});
+class MainPage extends StatefulWidget {
+  const MainPage({super.key});
 
   @override
-  State<TODOList> createState() => _TODOListState();
+  State<MainPage> createState() => _MainPageState();
 }
 
-class _TODOListState extends State<TODOList> {
-  List task = [];
-  TextEditingController taskController = TextEditingController();
+class _MainPageState extends State<MainPage> {
+  final FirebaseAuth auth = FirebaseAuth.instance;
+  final FirebaseFirestore db = FirebaseFirestore.instance;
 
-  void addtask() {
-    setState(() {
-      task.add({"text": taskController.text});
-      taskController.clear();
-    });
+  bool isLogin = true;
+
+  final emailController = TextEditingController();
+  final passwordController = TextEditingController();
+  final taskController = TextEditingController();
+
+  ////////////////// AUTH //////////////////
+
+  Future<void> authenticate() async {
+    try {
+      if (isLogin) {
+        await auth.signInWithEmailAndPassword(
+          email: emailController.text.trim(),
+          password: passwordController.text.trim(),
+        );
+      } else {
+        await auth.createUserWithEmailAndPassword(
+          email: emailController.text.trim(),
+          password: passwordController.text.trim(),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text("Error: $e")));
+    }
   }
 
-  void delete(int index) {
-    setState(() {
-      task.removeAt(index);
+  ////////////////// TASK //////////////////
+
+  CollectionReference get taskRef =>
+      db.collection("users").doc(auth.currentUser!.uid).collection("tasks");
+
+  Future<void> addTask() async {
+    if (taskController.text.isEmpty) return;
+
+    await taskRef.add({
+      "text": taskController.text,
+      "time": Timestamp.now(),
     });
+
+    taskController.clear();
   }
+
+  Future<void> deleteTask(String id) async {
+    await taskRef.doc(id).delete();
+  }
+
+  ////////////////// UI //////////////////
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Colors.blue,
-        title: Text(
-          "TODO LIST",
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+      body: auth.currentUser == null ? authUI() : todoUI(),
+    );
+  }
+
+  ////////////////// AUTH UI //////////////////
+
+  Widget authUI() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Color(0xff4facfe), Color(0xff00f2fe)],
         ),
-        centerTitle: true,
-        leading: Icon(Icons.menu, color: Colors.white),
-        actions: [
-          Icon(Icons.notifications, color: Colors.white),
-          SizedBox(width: 10),
-          Icon(Icons.account_circle_rounded, color: Colors.white),
-        ],
-        actionsPadding: EdgeInsets.all(10),
       ),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(10.0),
-            child: TextField(
-              decoration: InputDecoration(
-                border: OutlineInputBorder(),
-                labelText: "Enter Task",
-                labelStyle: TextStyle(color: Colors.black),
+      child: Center(
+        child: SingleChildScrollView(
+          child: Column(
+            children: [
+              Text(
+                isLogin ? "Welcome Back 👋" : "Create Account 🚀",
+                style: const TextStyle(
+                    fontSize: 26,
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold),
               ),
-              controller: taskController,
-            ),
-          ),
-          SizedBox(height: 10),
-          ElevatedButton(
-            onPressed: addtask,
-            style: ElevatedButton.styleFrom(
-              foregroundColor: Colors.lightGreenAccent,
-              backgroundColor: Colors.blue,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-              ),
-              elevation: 5,
-            ),
-            child: Text("Add Tasks"),
-          ),
-          SizedBox(height: 10),
-          Expanded(
-            child: GridView.builder(
-              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 3,
-                crossAxisSpacing: 10,
-                mainAxisSpacing: 10,
-              ),
-              itemBuilder:
-                  (context, index) => Stack(
-                children: [
-                  Transform.rotate(
-                    angle: 0.05,
-                    child: Padding(
-                      padding: const EdgeInsets.all(10.0),
-                      child: Container(
-                        height: 100,
-                        width: 100,
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(10),
-                          color:
-                          Colors.primaries[DateTime.now().millisecond %
-                              Colors.primaries.length][200],
-                          boxShadow: [
-                            BoxShadow(
-                              blurRadius: 0.5,
-                              color: Colors.lightGreenAccent,
-                              offset: Offset(4, 5),
-                            ),
-                          ],
-                        ),
-                        child: Center(
-                          child: Text(
-                            task[index]["text"],
-                            style: TextStyle(color: Colors.white),
-                          ),
-                        ),
+              const SizedBox(height: 30),
+
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Column(
+                  children: [
+                    TextField(
+                      controller: emailController,
+                      decoration: const InputDecoration(
+                        prefixIcon: Icon(Icons.email),
+                        hintText: "Email",
                       ),
                     ),
-                  ),
-                  Positioned(
-                    left: 60,
-                    right: 40,
-                    top: 10,
-                    child: IconButton(
-                      onPressed: () => delete(index),
-                      icon: Icon(Icons.push_pin, color: Colors.white),
+                    const SizedBox(height: 15),
+                    TextField(
+                      controller: passwordController,
+                      obscureText: true,
+                      decoration: const InputDecoration(
+                        prefixIcon: Icon(Icons.lock),
+                        hintText: "Password",
+                      ),
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 20),
+
+                    ElevatedButton(
+                      onPressed: authenticate,
+                      child: Text(isLogin ? "Login" : "Signup"),
+                    ),
+
+                    TextButton(
+                      onPressed: () {
+                        setState(() => isLogin = !isLogin);
+                      },
+                      child: Text(isLogin
+                          ? "Create Account"
+                          : "Already have account? Login"),
+                    ),
+                  ],
+                ),
               ),
-              itemCount: task.length,
-            ),
+            ],
           ),
+        ),
+      ),
+    );
+  }
+
+  ////////////////// TODO UI //////////////////
+
+  Widget todoUI() {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text("My Tasks"),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.logout),
+            onPressed: () async => await auth.signOut(),
+          )
         ],
+      ),
+
+      floatingActionButton: FloatingActionButton(
+        onPressed: () {
+          showDialog(
+            context: context,
+            builder: (_) => AlertDialog(
+              title: const Text("Add Task"),
+              content: TextField(
+                controller: taskController,
+                decoration: const InputDecoration(hintText: "Task"),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    addTask();
+                    Navigator.pop(context);
+                  },
+                  child: const Text("Add"),
+                )
+              ],
+            ),
+          );
+        },
+        child: const Icon(Icons.add),
+      ),
+
+      body: StreamBuilder(
+        stream: taskRef.orderBy("time").snapshots(),
+        builder: (context, snapshot) {
+          if (!snapshot.hasData) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          final tasks = snapshot.data!.docs;
+
+          return GridView.builder(
+            padding: const EdgeInsets.all(10),
+            itemCount: tasks.length,
+            gridDelegate:
+            const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              mainAxisSpacing: 10,
+              crossAxisSpacing: 10,
+            ),
+            itemBuilder: (_, index) {
+              final data = tasks[index];
+
+              return Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(15),
+                  boxShadow: const [
+                    BoxShadow(color: Colors.black12, blurRadius: 5)
+                  ],
+                ),
+                child: Stack(
+                  children: [
+                    Center(
+                      child: Text(
+                        data['text'],
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                    Positioned(
+                      right: 0,
+                      child: GestureDetector(
+                        onTap: () => deleteTask(data.id),
+                        child: const Icon(Icons.close, color: Colors.red),
+                      ),
+                    )
+                  ],
+                ),
+              );
+            },
+          );
+        },
       ),
     );
   }
